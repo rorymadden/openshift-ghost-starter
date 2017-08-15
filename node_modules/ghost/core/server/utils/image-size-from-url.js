@@ -20,6 +20,8 @@ var sizeOf       = require('image-size'),
     http         = require('http'),
     https        = require('https'),
     config       = require('../config'),
+    utils        = require('../utils'),
+    errors       = require('../errors'),
     dimensions,
     request,
     requestHandler;
@@ -33,7 +35,7 @@ module.exports.getImageSizeFromUrl = function getImageSizeFromUrl(imagePath) {
     return new Promise(function imageSizeRequest(resolve, reject) {
         var imageObject = {},
             options,
-            timeout = config.times.getImageSizeTimeoutInMS || 10000;
+            timeout = config.get('times:getImageSizeTimeoutInMS') || 10000;
 
         imageObject.url = imagePath;
 
@@ -45,7 +47,7 @@ module.exports.getImageSizeFromUrl = function getImageSizeFromUrl(imagePath) {
                 imagePath = 'http:' + imagePath;
             } else {
                 // get absolute url for image
-                imagePath = config.urlFor('image', {image: imagePath}, true);
+                imagePath = utils.url.urlFor('image', {image: imagePath}, true);
             }
         }
 
@@ -71,23 +73,26 @@ module.exports.getImageSizeFromUrl = function getImageSizeFromUrl(imagePath) {
 
                         return resolve(imageObject);
                     } catch (err) {
-                        err.context = imagePath;
-
-                        return reject(err);
+                        return reject(new errors.InternalServerError({
+                            code: 'IMAGE_SIZE',
+                            err: err,
+                            context: imagePath
+                        }));
                     }
+                } else if (res.statusCode === 404) {
+                    return reject(new errors.NotFoundError({
+                        message: 'Image not found.',
+                        code: 'IMAGE_SIZE',
+                        statusCode: res.statusCode,
+                        context: imagePath
+                    }));
                 } else {
-                    var err = new Error();
-
-                    if (res.statusCode === 404) {
-                        err.message = 'Image not found.';
-                    } else {
-                        err.message = 'Unknown Request error.';
-                    }
-
-                    err.context = imagePath;
-                    err.statusCode = res.statusCode;
-
-                    return reject(err);
+                    return reject(new errors.InternalServerError({
+                        message: 'Unknown Request error.',
+                        code: 'IMAGE_SIZE',
+                        statusCode: res.statusCode,
+                        context: imagePath
+                    }));
                 }
             });
         }).on('socket', function (socket) {
@@ -106,9 +111,11 @@ module.exports.getImageSizeFromUrl = function getImageSizeFromUrl(imagePath) {
                 });
             }
         }).on('error', function (err) {
-            err.context = imagePath;
-
-            return reject(err);
+            return reject(new errors.InternalServerError({
+                code: 'IMAGE_SIZE',
+                err: err,
+                context: imagePath
+            }));
         });
     });
 };
